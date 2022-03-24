@@ -24,36 +24,17 @@ import misc.params as params
 class Filter:
     '''Kalman filter class'''
     def __init__(self):
-        self.q = params.q                   # time increment
-        self.dt = params.dt                 # process noise variable for Kalman filter Q
-        self.dim_state = params.dim_state   # process model dimension
-
+        pass
 
     def F(self):
         ############
         # TODO Step 1: implement and return system matrix F
         ############
 
-        # system matrix
-        ##### params.dim_state = 6 のため6次元行列
-#        dt = self.dt
-#        F = np.matrix([ [1, 0, dt, 0, 0, 0],
-#                        [0, 1, 0, dt, 0, 0],
-#                        [0, 0, 1, 0, dt, 0],
-#                        [0, 0, 0, 1, 0,  0],
-#                        [0, 0, 0, 0, 1,  0],
-#                        [0, 0, 0, 0, 0,  1]
-#                      ])
-        ##### review修正 
-        dt = params.dt
-        F = np.matrix([  [1,0,0,dt,0,0],
-                         [0,1,0,0,dt,0],
-                         [0,0,1,0,0,dt],
-                         [0,0,0,1,0,0],
-                         [0,0,0,0,1,0],
-                         [0,0,0,0,0,1]])        
-        return F
-
+        dim_v = int(params.dim_state/2)
+        F = np.identity(params.dim_state)
+        F[0:dim_v,dim_v:] = np.identity(dim_v)*params.dt
+        return np.matrix(F)
         
         ############
         # END student code
@@ -64,21 +45,18 @@ class Filter:
         # TODO Step 1: implement and return process noise covariance Q
         ############
 
-        # process noise covariance Q
-        q = self.q
-        dt = self.dt
-        q1 = ((dt**3)/3) * q 
-        q2 = ((dt**2)/2) * q 
-        q3 = dt * q 
-        Q = np.matrix([ [q1, 0, 0, q2, 0, 0],
-                        [0, q1, 0, 0, q2, 0],
-                        [0, 0, q1, 0, 0, q2],
-                        [q2, 0, 0, q3, 0, 0],
-                        [0, q2, 0, 0, q3, 0],
-                        [0, 0, q2, 0, 0, q3]
-                      ])
-
-        return Q
+        dim_v = int(params.dim_state/2)
+        dt = params.dt
+        q = params.q
+        noise_p = (dt**3/3)*q
+        noise_cross = (dt**2/2)*q
+        noise_v = dt*q
+        Q = np.identity(params.dim_state)
+        Q[0:dim_v,0:dim_v] = np.identity(dim_v)*noise_p
+        Q[dim_v:,dim_v:]   = np.identity(dim_v)*noise_v
+        Q[0:dim_v,dim_v:]  = np.identity(dim_v)*noise_cross
+        Q[dim_v:,0:dim_v]  = np.identity(dim_v)*noise_cross
+        return np.matrix(Q)
         
         ############
         # END student code
@@ -89,16 +67,14 @@ class Filter:
         # TODO Step 1: predict state x and estimation error covariance P to next timestep, save x and P in track
         ############
 
-        # predict state and estimation error covariance to next timestep
-        x_pre = track.x
-        P_pre = track.P
-        
         F = self.F()
-        x = F*x_pre # state prediction
-        P = F*P_pre*F.T + self.Q() # covariance prediction
-        track.set_x(x)
-        track.set_P(P)
+        Q = self.Q()
         
+        x = F*track.x
+        p = F*track.P* F.transpose() +Q
+        
+        track.set_x(x)
+        track.set_P(p)
         ############
         # END student code
         ############ 
@@ -107,19 +83,31 @@ class Filter:
         ############
         # TODO Step 1: update state x and covariance P with associated measurement, save x and P in track
         ############
-        x_pre = track.x
-        P_pre = track.P
+        x_pred = track.x
+        p_pred = track.P
         
-        H = meas.sensor.get_H(x_pre)
-        gamma = self.gamma(track, meas)
-        S = self.S(track, meas, H)
-        I = np.asmatrix(np.eye((self.dim_state)))
-        K = P_pre * H.T * S.I
-        x = x_pre + K * gamma
-        P = (I - K * H) * P_pre
+        #retrive Jacobian matrix at current prediction result
+        H = meas.sensor.get_H(x_pred)
+        
+        #retrive value of (real meas - cur pred)
+        gamma = self.gamma(track,meas)
+        
+        S = self.S(track,meas,H)
+        
+        K = p_pred * H.transpose() * np.linalg.inv(S)
+        
+        x = x_pred + K*gamma
+        
+        I = np.identity(params.dim_state)
+        
+        #update covariance P
+        
+        p = (I - K*H)*p_pred
+        
         
         track.set_x(x)
-        track.set_P(P)        
+        track.set_P(p)
+        
         
         ############
         # END student code
@@ -131,12 +119,7 @@ class Filter:
         # TODO Step 1: calculate and return residual gamma
         ############
 
-        x = track.x
-        z = meas.z
-        
-        hx = meas.sensor.get_hx(x)
-        gamma = z - hx
-
+        gamma = meas.z - meas.sensor.get_hx(track.x)
         return gamma
         
         ############
@@ -148,12 +131,8 @@ class Filter:
         # TODO Step 1: calculate and return covariance of residual S
         ############
 
-        P = track.P
-        
-        S = H * P * H.T + meas.R # covariance of residual
-
+        S = (H *track.P *H.transpose()) + meas.R
         return S
-
         
         ############
         # END student code

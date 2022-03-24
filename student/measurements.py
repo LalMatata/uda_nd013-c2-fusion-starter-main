@@ -27,27 +27,19 @@ class Sensor:
         self.name = name
         if name == 'lidar':
             self.dim_meas = 3
-            # transformation sensor to vehicle coordinates equals identity matrix because lidar detections are already in vehicle coordinates
-            self.sens_to_veh = np.matrix(np.identity((4))) 
-            # angle of field of view in radians
-            self.fov = [-np.pi/2, np.pi/2] 
+            self.sens_to_veh = np.matrix(np.identity((4))) # transformation sensor to vehicle coordinates equals identity matrix because lidar detections are already in vehicle coordinates
+            self.fov = [-np.pi/2, np.pi/2] # angle of field of view in radians
         
         elif name == 'camera':
             self.dim_meas = 2
-            # transformation sensor to vehicle coordinates
-            self.sens_to_veh = np.matrix(calib.extrinsic.transform).reshape(4,4) 
-            # focal length i-coordinate
-            self.f_i = calib.intrinsic[0] 
-            # focal length j-coordinate
-            self.f_j = calib.intrinsic[1] 
-            # principal point i-coordinate
-            self.c_i = calib.intrinsic[2] 
-            # principal point j-coordinate
-            self.c_j = calib.intrinsic[3] 
-            # angle of field of view in radians, inaccurate boundary region was removed
-            self.fov = [-0.35, 0.35] 
-        # transformation vehicle to sensor coordinates    
-        self.veh_to_sens = np.linalg.inv(self.sens_to_veh) 
+            self.sens_to_veh = np.matrix(calib.extrinsic.transform).reshape(4,4) # transformation sensor to vehicle coordinates
+            self.f_i = calib.intrinsic[0] # focal length i-coordinate
+            self.f_j = calib.intrinsic[1] # focal length j-coordinate
+            self.c_i = calib.intrinsic[2] # principal point i-coordinate
+            self.c_j = calib.intrinsic[3] # principal point j-coordinate
+            self.fov = [-0.35, 0.35] # angle of field of view in radians, inaccurate boundary region was removed
+            
+        self.veh_to_sens = np.linalg.inv(self.sens_to_veh) # transformation vehicle to sensor coordinates
     
     def in_fov(self, x):
         # check if an object x can be seen by this sensor
@@ -55,29 +47,21 @@ class Sensor:
         # TODO Step 4: implement a function that returns True if x lies in the sensor's field of view, 
         # otherwise False.
         ############
+        pos_veh = np.ones((4,1))
+        pos_veh[0:3] = x[0:3]
         
-        
-        ## check if an object x can be seen by this sensor
-        # transfer position measurement to homogeneous coordinates.  [x, y, z] to [x, y, z, 1]
-        # transfer homogeneous coordinates from vehicle coordinate to sensor coordinate
-        # set visibility to False
-        # check if the object is in the sensor FOV
-        
-        # create homogeneous coordinates
-        pos_veh = np.ones((4, 1)) 
-        pos_veh[0:3] = x[0:3] 
         
         # transform from vehicle to sensor coordinates
-        pos_sens = self.veh_to_sens*pos_veh 
-        visible = False
+        pos_sens = self.veh_to_sens*pos_veh
         
-        # make sure to not divide by zero - we can exclude the whole negative x-range here
-        if pos_sens[0] > 0: 
-            alpha = np.arctan(pos_sens[1]/pos_sens[0]) # calc angle between object and x-axis
-            # no normalization needed because returned alpha always lies between [-pi/2, pi/2]
+        visible =False
+        
+        # make sure to not divide by zero 
+        if pos_sens[0] > 0:
+            alpha = np.arctan(pos_sens[1]/pos_sens[0])
             if alpha > self.fov[0] and alpha < self.fov[1]:
                 visible = True
-
+        
         return visible
         
         ############
@@ -87,11 +71,9 @@ class Sensor:
     def get_hx(self, x):    
         # calculate nonlinear measurement expectation value h(x)   
         if self.name == 'lidar':
-            # homogeneous coordinates
-            pos_veh = np.ones((4, 1)) 
+            pos_veh = np.ones((4, 1)) # homogeneous coordinates
             pos_veh[0:3] = x[0:3] 
-            # transform from vehicle to lidar coordinates
-            pos_sens = self.veh_to_sens*pos_veh 
+            pos_sens = self.veh_to_sens*pos_veh # transform from vehicle to lidar coordinates
             return pos_sens[0:3]
         elif self.name == 'camera':
             
@@ -103,27 +85,23 @@ class Sensor:
             # - return h(x)
             ############
 
-            pos_veh = np.ones((4, 1)) # homogeneous coordinates 
+            pos_veh = np.ones((4,1))
             pos_veh[0:3] = x[0:3]
             
-            # transform position estimate from vehicle to camera coordinates
-            pos_sens = self.veh_to_sens*pos_veh
-            x_sens = pos_sens[0]
-            y_sens = pos_sens[1]
-            z_sens = pos_sens[2]
+            pos_sens = self.veh_to_sens * pos_veh
             
-            # project from camera to image coordinates
-            pos_image = np.zeros((2,1))
+            x,y,z = pos_sens[0:3]
             
-            # if x = 0, return raise error
-            # else, calculate h(x)
-            if x_sens == 0:
-                raise NameError("divided by zero")
+            
+            hx = np.zeros((2,1))
+            
+            if x == 0:
+                raise NameError("Divide by zero")
             else:
-                pos_image[0] = self.c_i - self.f_i * y_sens / x_sens
-                pos_image[1] = self.c_j - self.f_j * z_sens / x_sens
-                return pos_image
-        
+                hx[0] = self.c_i - self.f_i * y/x
+                hx[1] = self.c_j - self.f_j * z/x
+            
+            return hx
             ############
             # END student code
             ############ 
@@ -161,16 +139,14 @@ class Sensor:
         return H   
         
     def generate_measurement(self, num_frame, z, meas_list):
-        
         # generate new measurement from this sensor and add to measurement list
         ############
         # TODO Step 4: remove restriction to lidar in order to include camera as well
         ############
-        
-        # code for only return lidar sensor measurement
-        meas = Measurement(num_frame, z, self)
+        meas = Measurement(num_frame,z,self)
         meas_list.append(meas)
         return meas_list
+        
         ############
         # END student code
         ############ 
@@ -187,48 +163,34 @@ class Measurement:
             sigma_lidar_x = params.sigma_lidar_x # load params
             sigma_lidar_y = params.sigma_lidar_y
             sigma_lidar_z = params.sigma_lidar_z
-            # measurement vector
-            self.z = np.zeros((sensor.dim_meas,1)) 
+            self.z = np.zeros((sensor.dim_meas,1)) # measurement vector
             self.z[0] = z[0]
             self.z[1] = z[1]
             self.z[2] = z[2]
-            # sensor that generated this measurement
-            self.sensor = sensor 
-            # measurement noise covariance matrix
-            self.R = np.matrix([[sigma_lidar_x**2, 0, 0], 
+            self.sensor = sensor # sensor that generated this measurement
+            self.R = np.matrix([[sigma_lidar_x**2, 0, 0], # measurement noise covariance matrix
                                 [0, sigma_lidar_y**2, 0], 
                                 [0, 0, sigma_lidar_z**2]])
-            
+            self.height = z[3]           
             self.width = z[4]
             self.length = z[5]
-            self.height = z[3]
             self.yaw = z[6]
         elif sensor.name == 'camera':
             
             ############
             # TODO Step 4: initialize camera measurement including z, R, and sensor 
             ############
-            
-            # load sigma parameters
-            # load params
-            sigma_cam_i = params.sigma_cam_i  
-            sigma_cam_j  = params.sigma_cam_j 
-            
-            # create measurement vector
+
+            sigma_cam_i = params.sigma_cam_i
+            sigma_cam_j = params.sigma_cam_j
             self.z = np.zeros((sensor.dim_meas,1))
-            self.z[0] = z[0]
-            self.z[1] = z[1]
-            
-            # create sensor object that generated this measurement
+            self.z[0] =z[0]
+            self.z[1] =z[1]
             self.sensor = sensor
-            
-            # create noise covariance matrix
-            R = np.zeros((2,2))
-            R[0, 0] = sigma_cam_i**2
-            R[1, 1] = sigma_cam_j**2
-            self.R = np.matrix(R)
-            
+            self.R = np.matrix([[sigma_cam_i**2,0],[0,sigma_cam_j**2]])
         
             ############
             # END student code
             ############ 
+
+
