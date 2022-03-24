@@ -45,7 +45,7 @@ class Association:
         self.association_matrix = np.asmatrix(np.inf*np.ones((N,M)))
         
         
-        self.unassigned_track = list(range(N))
+        self.unassigned_tracks = list(range(N))
         self.unassigned_meas = list(range(M))
         
         
